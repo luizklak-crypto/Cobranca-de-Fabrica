@@ -721,6 +721,24 @@
   </div>
 
 
+  <div id="confirmEmailPrimeiraModal" class="modal">
+    <div class="modal-card confirm-card">
+      <div class="modal-head">
+        <h2>Confirmar envio do e-mail</h2>
+        <button class="btn-danger" onclick="cancelarConfirmacaoEmailPrimeira()">Fechar</button>
+      </div>
+      <div class="confirm-warning">
+        Confirme somente depois que o e-mail de <b>Primeira cobrança</b> for enviado pelo Outlook.
+      </div>
+      <div id="confirmEmailPrimeiraContent"></div>
+      <div class="confirm-actions">
+        <button class="btn-light" onclick="cancelarConfirmacaoEmailPrimeira()">Não foi enviado</button>
+        <button class="btn-primary" onclick="confirmarEnvioEmailPrimeira()">Sim, e-mail enviado</button>
+      </div>
+    </div>
+  </div>
+
+
   <div id="confirmAtitudeModal" class="modal">
     <div class="modal-card confirm-card">
       <div class="modal-head">
@@ -913,6 +931,7 @@
     let activeCobrarSupplierIndex = -1;
     let activeCobrarRows = [];
     let selectedCobrarRowIds = new Set();
+    let pendingPrimeiraCobrancaEmailRows = [];
     let activeOccurrences = [];
     let activeOccurrencesOc = '';
     let activeJustificativaRow = null;
@@ -2529,7 +2548,21 @@
         .trim() || '-';
     }
 
-    function makeFornecedorEmailBody(selected, fornecedor) {
+    function getEmailTableRows(selected) {
+      return selected.map(row => ([
+        normalizeEmailCell(get(row,'pedido') || getPhysicalValue(row,'B')),
+        normalizeEmailCell(get(row,'numeroOc')),
+        normalizeEmailCell(formatDateOnly(get(row,'dataEnvioTecido'))),
+        normalizeEmailCell(getPhysicalValue(row,'B')),
+        normalizeEmailCell(get(row,'produto')),
+        normalizeEmailCell(get(row,'qtd')),
+        normalizeEmailCell(formatDateOnly(get(row,'dataEmbarque'))),
+        normalizeEmailCell(formatDateOnly(get(row,'dataConfirmacaoEmbarque'))),
+        ''
+      ]));
+    }
+
+    function makeFornecedorEmailBody(selected, fornecedor, mode = cobrarModalMode) {
       const header = [
         'Nº Ped Fornec',
         'Número da OC',
@@ -2542,48 +2575,48 @@
         'Observação do Fornecedor'
       ];
 
-      const rows = selected.map(row => ([
-        normalizeEmailCell(get(row,'pedido') || getPhysicalValue(row,'B')),
-        normalizeEmailCell(get(row,'numeroOc')),
-        normalizeEmailCell(formatDateOnly(get(row,'dataEnvioTecido'))),
-        normalizeEmailCell(getPhysicalValue(row,'B')),
-        normalizeEmailCell(get(row,'produto')),
-        normalizeEmailCell(get(row,'qtd')),
-        normalizeEmailCell(formatDateOnly(get(row,'dataEmbarque'))),
-        normalizeEmailCell(formatDateOnly(get(row,'dataConfirmacaoEmbarque'))),
-        ''
-      ]));
+      const rows = getEmailTableRows(selected);
 
       let msg = `Prezado(a), ${fornecedor}\n\n`;
-      msg += 'Estamos enviando abaixo a relação de ordens de compra cujo embarque previsto na data negociada não aconteceu. Solicitamos, com urgência, a confirmação do embarque das mesmas.\n\n';
+      if (mode === 'primeira') {
+        msg += 'Estamos enviando uma relação de ordens de compra listadas na planilha abaixo. Solicitamos que confirme o recebimento das ordens e que possamos considerar as datas indicadas.\n\n';
+        msg += 'Na última coluna da planilha, há um espaço reservado para que possam apontar eventuais irregularidades, alterações de datas ou observações que considerarem necessárias.\n\n';
+      } else {
+        msg += 'Estamos enviando abaixo a relação de ordens de compra cujo embarque previsto na data negociada não aconteceu. Solicitamos, com urgência, a confirmação do embarque das mesmas.\n\n';
+      }
       msg += header.join('\t') + '\n';
       rows.forEach(cols => { msg += cols.join('\t') + '\n'; });
       msg += '\nAtenciosamente,';
       return msg;
     }
 
-    function makeFornecedorEmailHtml(selected, fornecedor) {
+    function makeFornecedorEmailHtml(selected, fornecedor, mode = cobrarModalMode) {
       const td = 'border:1px solid #000;padding:4px;text-align:left;vertical-align:top;mso-number-format:\\@;';
       const th = 'border:1px solid #000;background:#d9d9d9;padding:4px;text-align:center;vertical-align:middle;font-weight:bold;';
       const rows = selected.map(row => `
         <tr>
-          <td style="${td}">${escapeHtml(get(row,'pedido') || getPhysicalValue(row,'B')) || '-'}</td>
-          <td style="${td}">${escapeHtml(get(row,'numeroOc')) || '-'}</td>
-          <td style="${td}">${escapeHtml(formatDateOnly(get(row,'dataEnvioTecido'))) || '-'}</td>
-          <td style="${td}">${escapeHtml(getPhysicalValue(row,'B')) || '-'}</td>
-          <td style="${td}">${escapeHtml(get(row,'produto')) || '-'}</td>
-          <td style="${td}">${escapeHtml(get(row,'qtd')) || '-'}</td>
-          <td style="${td}">${escapeHtml(formatDateOnly(get(row,'dataEmbarque'))) || '-'}</td>
-          <td style="${td}">${escapeHtml(formatDateOnly(get(row,'dataConfirmacaoEmbarque'))) || '-'}</td>
+          <td style="${td}">${escapeHtml(get(row,'pedido') || getPhysicalValue(row,'B')) || '&nbsp;'}</td>
+          <td style="${td}">${escapeHtml(get(row,'numeroOc')) || '&nbsp;'}</td>
+          <td style="${td}">${escapeHtml(formatDateOnly(get(row,'dataEnvioTecido'))) || '&nbsp;'}</td>
+          <td style="${td}">${escapeHtml(getPhysicalValue(row,'B')) || '&nbsp;'}</td>
+          <td style="${td}">${escapeHtml(get(row,'produto')) || '&nbsp;'}</td>
+          <td style="${td}">${escapeHtml(get(row,'qtd')) || '&nbsp;'}</td>
+          <td style="${td}">${escapeHtml(formatDateOnly(get(row,'dataEmbarque'))) || '&nbsp;'}</td>
+          <td style="${td}">${escapeHtml(formatDateOnly(get(row,'dataConfirmacaoEmbarque'))) || '&nbsp;'}</td>
           <td style="${td}">&nbsp;</td>
         </tr>
       `).join('');
 
+      const intro = mode === 'primeira'
+        ? `<p>Estamos enviando uma relação de ordens de compra listadas na planilha abaixo. Solicitamos que confirme o recebimento das ordens e que possamos considerar as datas indicadas.</p>
+           <p>Na última coluna da planilha, há um espaço reservado para que possam apontar eventuais irregularidades, alterações de datas ou observações que considerarem necessárias.</p>`
+        : `<p>Estamos enviando abaixo a relação de ordens de compra cujo embarque previsto na data negociada não aconteceu. Solicitamos, com urgência, a confirmação do embarque das mesmas.</p>`;
+
       return `
         <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;">
           <p>Prezado(a), <strong>${escapeHtml(fornecedor)}</strong></p>
-          <p>Estamos enviando abaixo a relação de ordens de compra cujo embarque previsto na data negociada não aconteceu. Solicitamos, com urgência, a confirmação do embarque das mesmas.</p>
-          <table border="1" cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;border:1px solid #000;mso-border-alt:solid #000 .75pt;">
+          ${intro}
+          <table border="1" cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:auto;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;border:1px solid #000;mso-border-alt:solid #000 .75pt;">
             <thead>
               <tr>
                 <th style="${th}">Nº Ped<br>Fornec</th>
@@ -2650,18 +2683,72 @@
       const fornecedor = get(selected[0], 'fornecedor') || 'Fornecedor';
       const ocs = [...new Set(selected.map(row => String(get(row,'numeroOc') || '').trim()).filter(Boolean))];
       const dataHoje = todayBr();
-      const assunto = `Cobrança de fábrica - OCs ${ocs.join(', ') || '-'} - ${dataHoje}`;
-      const msg = makeFornecedorEmailBody(selected, fornecedor);
-      const htmlBody = makeFornecedorEmailHtml(selected, fornecedor);
+      const assunto = cobrarModalMode === 'primeira'
+        ? `Primeira cobrança de fábrica - OCs ${ocs.join(', ') || '-'} - ${dataHoje}`
+        : `Cobrança de fábrica - OCs ${ocs.join(', ') || '-'} - ${dataHoje}`;
+      const msg = makeFornecedorEmailBody(selected, fornecedor, cobrarModalMode);
+      const htmlBody = makeFornecedorEmailHtml(selected, fornecedor, cobrarModalMode);
 
       const copiedHtml = await copyHtmlEmailBody(htmlBody, msg);
       const mailto = `mailto:?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(msg)}`;
       window.location.href = mailto;
 
+      if (cobrarModalMode === 'primeira') {
+        pendingPrimeiraCobrancaEmailRows = selected;
+        document.getElementById('confirmEmailPrimeiraContent').innerHTML = `
+          <div class="grid-2">
+            <div class="detail-box"><strong>Fornecedor</strong>${escapeHtml(fornecedor)}</div>
+            <div class="detail-box"><strong>OCs selecionadas</strong>${escapeHtml(ocs.join(', ') || '-')}</div>
+          </div>
+          <div class="detail-box"><strong>Itens selecionados</strong>${selected.length}</div>
+          <div class="small">Ao confirmar, o sistema salvará <b>Enviado Primeira cobrança</b> na coluna Z, a data do dia na coluna AA e registrará a ocorrência.</div>
+        `;
+        setTimeout(() => document.getElementById('confirmEmailPrimeiraModal').classList.add('show'), 700);
+      }
+
       if (copiedHtml) {
         toast('Outlook aberto. A tabela com linhas foi copiada; clique no corpo do e-mail e pressione Ctrl+V para colar formatado.');
       } else {
         toast(`${selected.length} item(ns) selecionado(s). Outlook aberto com tabela textual. O navegador não permitiu copiar a tabela formatada.`);
+      }
+    }
+
+    function cancelarConfirmacaoEmailPrimeira() {
+      pendingPrimeiraCobrancaEmailRows = [];
+      document.getElementById('confirmEmailPrimeiraModal').classList.remove('show');
+      toast('Confirmação do envio cancelada. Nada foi salvo.');
+    }
+
+    async function confirmarEnvioEmailPrimeira() {
+      const rows = pendingPrimeiraCobrancaEmailRows || [];
+      if (!rows.length) return toast('Nenhum item pendente para confirmar.');
+      const fornecedor = get(rows[0], 'fornecedor') || '';
+      const ocs = [...new Set(rows.map(row => String(get(row,'numeroOc') || '').trim()).filter(Boolean))];
+      const rowNumbers = rows.map(row => row.__ROW_NUMBER__).filter(Boolean);
+      const dataHoje = todayBr();
+
+      document.getElementById('confirmEmailPrimeiraModal').classList.remove('show');
+      toast('Salvando envio da primeira cobrança...');
+
+      try {
+        const response = await callAppsScriptPostIframe({
+          action: 'registrarEnvioPrimeiraCobranca',
+          rowNumbers: JSON.stringify(rowNumbers),
+          fornecedor: fornecedor,
+          ocs: ocs.join(', '),
+          usuario: getLoggedUser()
+        });
+
+        rows.forEach(row => {
+          row[physicalColumnKey('Z')] = 'Enviado Primeira cobrança';
+          row[physicalColumnKey('AA')] = dataHoje;
+        });
+        pendingPrimeiraCobrancaEmailRows = [];
+        applyFilters();
+        toast('Envio da primeira cobrança registrado na planilha e em ocorrências.');
+      } catch (err) {
+        console.error(err);
+        toast(err.message || 'Não foi possível registrar o envio da primeira cobrança.');
       }
     }
 
